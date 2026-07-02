@@ -1,10 +1,30 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TaskOrchestratorAPI.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using TaskOrchestratorAPI.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
 
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = "https://accounts.google.com";
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuers =
+            [
+                "https://accounts.google.com",
+                "accounts.google.com"
+            ],
+            ValidateAudience = true,
+            ValidAudience = googleClientId
+        };
+    });
+builder.Services.AddAuthorization();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DevelopmentCors", policy =>
@@ -42,14 +62,14 @@ builder.Services.AddCors(options =>
     }
 });
 
-builder.Services.AddSingleton<ITaskService, TaskService>();
+builder.Services.AddScoped<ITaskService, TaskService>();
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
     app.UseCors("DevelopmentCors");
 }
 else
@@ -58,5 +78,7 @@ else
     app.UseCors("ProductionCors");
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 app.Run();

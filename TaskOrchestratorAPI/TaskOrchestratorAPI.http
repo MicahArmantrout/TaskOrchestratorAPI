@@ -1,6 +1,152 @@
 @TaskOrchestratorAPI_HostAddress = http://localhost:5112
+@GoogleIdTokenForUser1 = token here 
+@GoogleIdTokenForUser2 = token here
 
-GET {{TaskOrchestratorAPI_HostAddress}}/weatherforecast/
+### Create task
+POST {{TaskOrchestratorAPI_HostAddress}}/api/task
 Accept: application/json
+Content-Type: application/json
+Authorization: Bearer  BlankToVerifyRequiredAuth
 
-###
+{
+  "title": "Finish API work",
+  "isComplete": false,
+  "description": "Create a task from the HTTP file",
+  "status": "New"
+}
+
+> {%
+    client.test("Verify Auth is working", function () {
+        client.assert(response.status === 401, "Expected 401 unauthorized");
+    });
+%}
+
+### Create task
+POST {{TaskOrchestratorAPI_HostAddress}}/api/task
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+{
+  "title": "Finish API work",
+  "isComplete": false,
+  "description": "Create a task from the HTTP file",
+  "status": "New"
+}
+
+> {%
+    client.test("Verify Auth is working and that a task was created", function () {
+        client.assert(response.status === 201, "Expected 201 (created)");
+        client.assert(response.body, "Expected response body");
+
+        const task = typeof response.body === "string"
+            ? JSON.parse(response.body)
+            : response.body;
+
+        client.assert(task.id, "Expected created task id");
+        client.global.set("TaskId", task.id);
+        client.log("Created task id: " + task.id);
+        client.assert(task.id == client.global.get("TaskId"), "Expected matching task id");
+    });
+%}
+
+### Get one task by id for the other authenticated user
+GET {{TaskOrchestratorAPI_HostAddress}}/api/task/{{TaskId}}
+Accept: application/json
+Authorization: Bearer {{GoogleIdTokenForUser2}}
+
+> {%
+    client.test("Verify Users can't just grab any task", function () {
+        client.assert(response.status === 404, "Expected 404 unauthorized");
+    });
+    
+%}
+
+### Get all tasks for the authenticated user
+GET {{TaskOrchestratorAPI_HostAddress}}/api/task
+Accept: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+> {%
+    client.test("Verify you can get all tasks for a user", function () {
+        client.assert(response.status === 200, "Expected 200 (ok)");
+
+        const tasks = typeof response.body === "string"
+            ? JSON.parse(response.body)
+            : response.body;
+
+        const taskId = client.global.get("TaskId");
+        client.assert(Array.isArray(tasks), "Expected an array of tasks");
+        client.assert(tasks.some(task => task.id == taskId), "Expected created task in task list");
+    });
+
+%}
+
+### Get one task by id for the authenticated user
+GET {{TaskOrchestratorAPI_HostAddress}}/api/task/{{TaskId}}
+Accept: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+> {%
+    client.test("Verify you can get a single task for a user", function () {
+        client.assert(response.status === 200, "Expected 200 (ok)");
+
+        const task = typeof response.body === "string"
+            ? JSON.parse(response.body)
+            : response.body;
+
+        client.assert(task.id == client.global.get("TaskId"), "Expected fetched task id to match created task id");
+    });
+%}
+
+
+### Edit task
+PUT {{TaskOrchestratorAPI_HostAddress}}/api/task/{{TaskId}}
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+{
+  "title": "Updated task title",
+  "isComplete": true,
+  "description": "Updated from the HTTP file",
+  "status": "Completed"
+}
+> {%
+    client.test("Verify you can edit a task", function () {
+        client.assert(response.status === 200, "Expected 200 (ok)");
+
+        const task = typeof response.body === "string"
+            ? JSON.parse(response.body)
+            : response.body;
+
+        client.assert(task.id == client.global.get("TaskId"), "Expected edited task id to match created task id");
+        client.assert(task.title === "Updated task title", "Expected updated task title");
+        client.assert(task.isComplete === true, "Expected task to be complete");
+        client.assert(task.description === "Updated from the HTTP file", "Expected updated task description");
+        client.assert(task.status === "Completed", "Expected updated task status");
+    });
+%}
+
+
+### Delete task
+DELETE {{TaskOrchestratorAPI_HostAddress}}/api/Task/{{TaskId}}
+Accept: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+> {%
+    client.test("Verify you can delete a task", function () {
+        client.assert(response.status === 204, "Expected 204 (no content)");
+    });
+%}
+
+### Verify deleted task is gone
+GET {{TaskOrchestratorAPI_HostAddress}}/api/Task/{{TaskId}}
+Accept: application/json
+Authorization: Bearer {{GoogleIdTokenForUser1}}
+
+> {%
+    client.test("Verify deleted task cannot be fetched", function () {
+        client.assert(response.status === 404, "Expected 404 (not found)");
+    });
+%}
